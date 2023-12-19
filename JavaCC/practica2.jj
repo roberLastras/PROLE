@@ -1,0 +1,325 @@
+/*
+ * Título    	: Minicompilador con JavaCC
+ * Descripción	: Programa en JavaCC para obtener un compilador que traduzca un lenguaje 
+ *		  de alto nivel a código de máquina de pila abstracta.
+ * Autores    	: Roberto Lastras Santos y Alberto Santos Martínez
+ * Fecha      	: 11/11/2022
+ * Versión    	: v.1.0
+ * Asignatura 	: Procesadores del Lenguaje
+ * Entrega    	: Práctica 2
+ *
+ */
+
+/* PARSER */
+
+PARSER_BEGIN(practica2)
+
+public class practica2{
+
+	//Declaración de variables
+	static private int lbl = -1;
+	static private int endif = 0;
+	
+	//Funciones para obtener el numero de etiqueta
+	private static int obtenerSiguienteLBL() {
+		return ++lbl;
+	}
+	private static int obtenerLBL() {
+		return lbl;
+	}
+	
+	//Funciones para obtener el numero de etiqueta al finalizar un IF
+	private static int obtenerSiguienteEndIf() {
+		endif = obtenerSiguienteLBL();
+		return endif;
+	}
+	private static int obtenerEndIf() {
+		return endif;
+	}
+
+	//Función main del programa
+	public static void main (String[] args) throws Exception {
+		if(args.length == 0){	//Entrada por pantalla
+                	practica2 parser = new practica2(System.in);
+                	parser.programa();
+        	}else{ 			//Entrada mediante fichero
+                	practica2 parser = new practica2(new java.io.FileInputStream(args[0]));
+                	parser.programa();
+
+        	}
+    	}
+
+}
+
+PARSER_END(practica2)
+
+/* SKIPS */
+
+SKIP: {
+ 	//Saltamos cualquier espaciado, salto  de linea o tabuladores
+ 	<SPC: [" ","\n", "\t","\r"]> 
+ 	//Tambien nos saltamos los posibles comentarios que comiencen por una exclamación
+|	<COM: "!" (~["\n"])*"\n"> 
+}
+ 
+/* TOKENS */
+
+TOKEN:
+{
+	//Todas las palabras reservadas para poder hacer que nuestro programa funcione
+	<WHILE: ("while")>
+        |<ENDWHILE: ("endwhile")>
+        |<IF: ("if")>
+        |<ENDIF: ("endif")>
+        |<THEN: ("then")>
+        |<ELSEIF: ("elseif")>
+        |<ELSE: ("else")>
+        |<PRINT: ("print")>
+}
+
+TOKEN:
+{
+ 	<NUM: (["0"-"9"])+> //Todos los números enteros
+        |<ID: (["a"-"z"]|["A"-"Z"]|"_")(["a"-"z" ]|["A"-"Z"]|<NUM>|"_"){0,50}> 
+        /* ID, reconoce las letras minúsculas, mayúsculas, guiones bajos y números, sin embargo 
+ 	 * no reconoce algo que comience con números. Está declarada al final debido a que puede 
+ 	 * haber caso de empate de longitud con otros tokenes y ejecutarse ID en vez de otro token 
+ 	 * y no queremos que eso suceda.*/
+}
+
+/* GRAMÁTICA */
+
+void programa():{}
+{
+	stmtsequence()
+  	<EOF>
+}
+
+/* No terminal 	: stmtsequence
+ * Producciones	: stmtsequence -> programstmt | programstmt stmtsequence
+ * Return	: void
+ */
+void stmtsequence():{}
+{
+  	(programstmt())+
+}
+
+
+/* No terminal 	: programstmt
+ * Producciones	: programstmt -> assigconstruct | loopconstruct | ifconstruct | printstmt
+ * Return	: void
+ */
+void programstmt():{}
+{
+	(assigconstruct() | loopconstruct() | ifconstruct() | printstmt())
+}
+
+/* No terminal 	: loopconstruct
+ * Terminales	: <WHILE>, "(", ")", <ENDWHILE>
+ * Producciones	: loopconstruct -> WHILE '(' expr ')' stmtsequence ENDWHILE 
+ * Return	: void
+ * 
+ */
+void loopconstruct():{
+	Token tk;
+	int etiqueta_while = obtenerSiguienteLBL(); int etiqueta_fin_while = obtenerSiguienteLBL();
+}
+{
+	(
+	tk=<WHILE> {System.out.println("LBL" + etiqueta_while);}
+	"(" expr() ")" {System.out.println("\tsifalsovea LBL" + etiqueta_fin_while);}
+	stmtsequence() 
+	tk=<ENDWHILE> {System.out.println("\tvea LBL" + etiqueta_while + "\nLBL" + etiqueta_fin_while);}
+       )
+}
+
+
+/* No terminal 	: ifconstruct
+ * Terminales	: <ENDIF>
+ * Producciones	: ifthenstmt stmtsequence (elseifconstruct)* (elseconstruct)? ENDIF
+ * Return	: void
+ * 
+ */
+void ifconstruct():{
+	Token tk;
+	int etiqueta_fin_if = obtenerSiguienteEndIf();
+}
+{
+	(
+	ifthenstmt() stmtsequence() (elseifconstruct())* (elseconstruct())? 
+	tk=<ENDIF> {System.out.println("LBL" + etiqueta_fin_if);}
+	)
+}
+
+
+/* No terminal 	: ifthenstmt
+ * Terminales	: <IF>, "(", ")", <THEN>
+ * Producciones	: ifthenstmt -> IF '(' expr ')' THEN
+ * Return	: void
+ * 
+ */
+void ifthenstmt():{
+	Token tk;
+	int etiqueta_if_falso = obtenerSiguienteLBL();
+}
+{
+	(
+	tk=<IF>
+	"(" expr() ")" {System.out.println("\tsifalsovea LBL" + etiqueta_if_falso);} 
+	tk=<THEN>
+	)
+}
+
+/* No terminal 	: elseifconstruct
+ * Terminales	: <ELSEIF>, "(", ")", <THEN>
+ * Producciones	: elseifconstruct -> ELSEIF '(' expr ')' THEN stmtsequence
+ * Return	: void
+ * 
+ */
+void elseifconstruct():{
+	Token tk;
+	int etiqueta_elseif = obtenerLBL(); int etiqueta_elseif_falso = obtenerSiguienteLBL();
+	int etiqueta_fin_if = obtenerEndIf();
+}
+{
+	(
+	tk=<ELSEIF> {System.out.println("\tvea LBL" + etiqueta_fin_if + "\nLBL" + etiqueta_elseif);}
+	"(" expr() ")" {System.out.println("\tsifalsovea LBL" + etiqueta_elseif_falso);} 
+	tk=<THEN> stmtsequence()
+	)
+}
+
+
+/* No terminal 	: elseconstruct
+ * Terminales	: <ELSE>
+ * Producciones	: elseconstruct -> ELSE stmtsequence
+ * Return	: void
+ * 
+ */
+void elseconstruct():{
+	Token tk;
+	int etiqueta_else = obtenerLBL(); int etiqueta_fin_else = obtenerSiguienteLBL();
+	int etiqueta_fin_if = obtenerEndIf();
+}
+{
+	(
+	tk=<ELSE> {System.out.println("\tvea LBL" + etiqueta_fin_if + "\nLBL" + etiqueta_else);}
+	stmtsequence()
+	)
+}
+
+
+/* No terminal 	: printstmt
+ * Terminales	: <PRINT>, ","
+ * Producciones	: printstmt -> PRINT expr (',' expr)*
+ * Return	: void
+ * 
+ */
+void printstmt():{
+	Token tk;
+}
+{
+	(
+	  tk=<PRINT> expr() {System.out.println("\tprint");} ("," expr(){System.out.println("\tprint");})*
+	)
+}
+
+
+/* No terminal 	: assigconstruct
+ * Terminales	: <ID>, "=", "++", "--"
+ * Producciones	: assigconstruct -> ID '=' expr | ID '++' | ID '--'
+ * Return	: void
+ * 
+ */
+void assigconstruct():{
+	Token tk;
+}
+{
+	
+	tk= <ID> 
+	(
+	   "=" {System.out.println("\tvalori "+ tk.image);} expr() {System.out.println("\tasigna");}
+	|  "++" {System.out.println("\tvalori "+ tk.image + "\n\tvalord "+ tk.image + "\n\tmete 1" + "\n\tsum" + "\n\tasigna");}
+	|  "--" {System.out.println("\tvalori "+ tk.image + "\n\tvalord "+ tk.image + "\n\tmete 1" + "\n\tsub" + "\n\tasigna");}
+	)
+}
+
+/*
+ * expr -> expr ('+' multexp | '-' multexp) | multexp
+ */
+/* No terminal 	: expr
+ * Producciones	: expr -> multexp expr1
+ * Return	: void
+ * 
+ */
+void expr():{}
+{
+ 	(
+ 	    multexp() expr1()
+ 	)
+}
+
+/* No terminal 	: expr1
+ * Terminales	: "+", "-"
+ * Producciones	: expr1 -> ('+' multexp | '-' multexp) expr1
+ * Return	: void
+ * 
+ */
+void expr1():{}
+{
+ 	(
+  	   (
+  	      "+" multexp() {System.out.println("\tsum");} 
+	   |  "-" multexp() {System.out.println("\tsub");}
+  	   ) expr1()
+ 	)?
+}
+
+
+/* No terminal 	: multexp
+ * Producciones	: multexp -> value multexp1
+ * Return	: void
+ * 
+ */
+void multexp():{}
+{
+	(
+  	   value() multexp1()
+ 	)
+}
+
+/* No terminal 	: multexp1
+ * Terminales	: "*", "/"
+ * Producciones	: multexp1 -> ('*' value | '/' value) multexp1
+ * Return	: void
+ * 
+ */
+void multexp1():{}
+{
+	(
+  	   ( 
+  	      "*" value() {System.out.println("\tmul");}
+  	   |  "/" value() {System.out.println("\tdiv");}
+  	   ) multexp1()
+ 	)?
+}
+
+/*
+ * 
+ */
+/* No terminal 	: value
+ * Terminales	: "(", ")", <NUM>, <ID>
+ * Producciones	: value -> '(' expr ')' | NUM | ID
+ * Return	: void
+ * 
+ */
+void value():{
+	Token tk;
+}
+{
+  	(
+ 	   "(" expr() ")"
+   	|  tk=<NUM> {System.out.println("\tmete " + tk.image);}
+   	|  tk=<ID>  {System.out.println("\tvalord " + tk.image);}
+  	)
+}
